@@ -23,16 +23,16 @@ Verifique se o Ollama está rodando:
 ollama list
 ```
 
-### 2. Dependências Python
+### 2. Dependências Python (usando uv)
+
+Este projeto utiliza o [uv](https://github.com/astral-sh/uv) para gerenciamento de dependências.
 
 ```bash
-# Crie um ambiente virtual (recomendado)
-python -m venv venv
-source venv/bin/activate  # Linux/Mac
-# ou: venv\Scripts\activate  # Windows
+# Instale o uv (se ainda não tiver)
+curl -LsSf https://astral.sh/uv/install.sh | sh
 
-# Instale as dependências
-pip install langchain langchain-community langchain-core chromadb
+# Instale as dependências e crie o ambiente virtual automaticamente
+uv sync
 ```
 
 ## 🚀 Execução
@@ -41,8 +41,8 @@ pip install langchain langchain-community langchain-core chromadb
 # Navegue até o diretório do projeto
 cd /home/lbarbedo/projetos_skynet02/ping_v3
 
-# Execute o script
-python swot_analyzer.py
+# Execute o script usando uv run
+uv run swot_analyzer.py
 ```
 
 ## ⚙️ Configuração
