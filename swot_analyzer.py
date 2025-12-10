@@ -163,24 +163,36 @@ def criar_vector_store(documentos: List[Document], persist_directory: str) -> Ch
 def gerar_swot_individual(
     vector_store: Chroma,
     nome_arquivo_alvo: str,
-    k: int = 15
+    k: int = 15,
+    arquivos_multiplos: List[str] = None
 ) -> str:
     """
     Gera análise SWOT para um perfil específico usando filtro de metadados.
     
     CRITICAL: O filtro {"source": nome_arquivo_alvo} garante que apenas
     documentos do perfil especificado sejam considerados na análise.
+    Quando arquivos_multiplos é fornecido, combina documentos de múltiplos arquivos.
     
     Args:
         vector_store: Instância do ChromaDB
-        nome_arquivo_alvo: Nome do arquivo (ex: "reitor.json")
+        nome_arquivo_alvo: Nome do arquivo ou nome identificador (ex: "reitor.json")
         k: Número de documentos a recuperar (default: 15)
+        arquivos_multiplos: Lista opcional de arquivos para combinar na análise
         
     Returns:
         Texto da análise SWOT gerada
     """
     print(f"\n🎯 Gerando SWOT para: {nome_arquivo_alvo}")
-    print(f"  ├── Configurando filtro de metadados: source = {nome_arquivo_alvo}")
+    
+    # Define o filtro baseado em arquivo único ou múltiplos
+    if arquivos_multiplos and len(arquivos_multiplos) > 1:
+        # Filtro $or para múltiplos arquivos (ChromaDB syntax)
+        filtro = {"$or": [{"source": arq} for arq in arquivos_multiplos]}
+        print(f"  ├── Configurando filtro para múltiplos arquivos: {arquivos_multiplos}")
+    else:
+        filtro = {"source": nome_arquivo_alvo}
+        print(f"  ├── Configurando filtro de metadados: source = {nome_arquivo_alvo}")
+    
     print(f"  ├── Recuperando top {k} documentos relevantes...")
     
     # Configura o retriever com FILTRO DE METADADOS - CRÍTICO!
@@ -188,7 +200,7 @@ def gerar_swot_individual(
         search_type="similarity",
         search_kwargs={
             "k": k,
-            "filter": {"source": nome_arquivo_alvo}  # ISOLAMENTO DE DADOS
+            "filter": filtro  # ISOLAMENTO DE DADOS
         }
     )
     
@@ -356,12 +368,14 @@ def main():
     print("=" * 60)
     
     # Lista de perfis a analisar (CONFIGURÁVEL)
-    # Adicione ou remova arquivos conforme necessário
+    # Pode ser uma string simples para arquivo único
+    # Ou uma tupla (nome_exibicao, [lista_de_arquivos]) para combinar múltiplos arquivos
     perfis_para_analisar = [
-        "reitor.json",
-        "joserodrigues.json",
+        # "reitor.json",
+        # "joserodrigues.json",
         # "sintuff.json",
-        # "fabiopassos.json",
+        # Fabio Passos - combina dois arquivos em uma única análise
+        ("fabiopassos_completo", ["fabiopassos.json", "fabiopassosvicereitor.json"]),
         # Adicione mais perfis aqui conforme necessário
     ]
     
@@ -370,32 +384,50 @@ def main():
     
     print(f"\n📋 Perfis configurados para análise: {len(perfis_para_analisar)}")
     for perfil in perfis_para_analisar:
-        status = "✅" if perfil in arquivos_disponiveis else "❌ (não encontrado)"
-        print(f"  ├── {perfil} {status}")
+        if isinstance(perfil, tuple):
+            nome, arquivos = perfil
+            todos_disponiveis = all(arq in arquivos_disponiveis for arq in arquivos)
+            status = "✅" if todos_disponiveis else "❌ (algum arquivo não encontrado)"
+            print(f"  ├── {nome} (combinado: {', '.join(arquivos)}) {status}")
+        else:
+            status = "✅" if perfil in arquivos_disponiveis else "❌ (não encontrado)"
+            print(f"  ├── {perfil} {status}")
     
     # Processa cada perfil sequencialmente
     relatorios_gerados = []
     
     for i, perfil in enumerate(perfis_para_analisar, 1):
-        if perfil not in arquivos_disponiveis:
-            print(f"\n⚠️ Pulando {perfil}: arquivo não encontrado")
-            continue
+        # Determina se é perfil único ou combinado
+        if isinstance(perfil, tuple):
+            nome_perfil, arquivos_lista = perfil
+            # Verifica se todos os arquivos existem
+            arquivos_faltando = [arq for arq in arquivos_lista if arq not in arquivos_disponiveis]
+            if arquivos_faltando:
+                print(f"\n⚠️ Pulando {nome_perfil}: arquivos não encontrados: {arquivos_faltando}")
+                continue
+        else:
+            nome_perfil = perfil
+            arquivos_lista = None
+            if perfil not in arquivos_disponiveis:
+                print(f"\n⚠️ Pulando {perfil}: arquivo não encontrado")
+                continue
             
         print(f"\n{'─' * 50}")
-        print(f"📌 Processando perfil {i}/{len(perfis_para_analisar)}: {perfil}")
+        print(f"📌 Processando perfil {i}/{len(perfis_para_analisar)}: {nome_perfil}")
         print('─' * 50)
         
         try:
             # Gera a análise SWOT com isolamento de dados
             analise = gerar_swot_individual(
                 vector_store=vector_store,
-                nome_arquivo_alvo=perfil,
-                k=15  # Recupera bastante contexto
+                nome_arquivo_alvo=nome_perfil if not arquivos_lista else arquivos_lista[0],
+                k=30 if arquivos_lista else 15,  # Mais documentos para perfis combinados
+                arquivos_multiplos=arquivos_lista
             )
             
             # Salva o relatório
             caminho_relatorio = salvar_relatorio(
-                nome_arquivo=perfil,
+                nome_arquivo=nome_perfil,
                 conteudo=analise,
                 diretorio_saida=REPORTS_DIR
             )
@@ -404,7 +436,7 @@ def main():
             print(f"  📄 Relatório salvo: {caminho_relatorio}")
             
         except Exception as e:
-            print(f"  ❌ Erro ao processar {perfil}: {e}")
+            print(f"  ❌ Erro ao processar {nome_perfil}: {e}")
             import traceback
             traceback.print_exc()
     
